@@ -34,19 +34,13 @@ FONTSCALE = 1.25
 THICKNESS = 2  # int
 LINETYPE = 1
 
-device = torch.device(0)  # Change to 'cuda' if you have a GPU available
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 tracker = StrongSort(
     reid_weights=Path('osnet_x0_25_msmt17.pt'),  # ReID model to use
     device=device,
     half=False,
 )
-# arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=115200, timeout=1)
-
-def sendData(pan, tilt):
-    command = f"DEG {pan},{tilt}\n"
-    # arduino.write(command.encode())
-    print(f"Sent command: {command}")
 
 # Function to generate a unique color for each track ID
 def get_color(track_id):
@@ -426,7 +420,7 @@ def capture_webcam(frame_rate = 4, frame_predict = 4):
     frames = []
     frame_count = 0
     vid = "/home/ciis/Desktop/aldy_septi/30d_2s1.mp4"
-    cap = cv2.VideoCapture(vid)  # '0' if webcam, "vid" if video
+    cap = cv2.VideoCapture(0)  # '0' if webcam, "vid" if video
 
     while frame_count < frame_predict * frame_rate:
         _, frame = cap.read()
@@ -437,7 +431,7 @@ def capture_webcam(frame_rate = 4, frame_predict = 4):
 def main():
     print("AAAAA")
     args = parse_args()
-    model = YOLO('yolov8l.pt')  # Replace with your model path
+    model = YOLO('yolov8s.pt')  # Replace with your model path
 
     # Start capturing video from the webcam
     # cap = cv2.VideoCapture(0)
@@ -576,3 +570,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+

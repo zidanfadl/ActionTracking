@@ -2,5 +2,6 @@ boxmot
 mmaction2x
 *.sh
 boxmot_example.py
+experimental.py
 *.pt
 *.mp4

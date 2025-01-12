@@ -34,19 +34,20 @@ FONTSCALE = 1.25
 THICKNESS = 2  # int
 LINETYPE = 1
 
-device = torch.device(0)  # Change to 'cuda' if you have a GPU available
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Change to 'cuda' if you have a GPU available
 
 tracker = StrongSort(
     reid_weights=Path('osnet_x0_25_msmt17.pt'),  # ReID model to use
     device=device,
     half=False,
 )
-# arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=115200, timeout=1)
 
-def sendData(pan, tilt):
-    command = f"DEG {pan},{tilt}\n"
-    # arduino.write(command.encode())
-    print(f"Sent command: {command}")
+def sendData(targetPos):
+    ser = serial.Serial(port='COM4', timeout=1,baudrate=9600)
+    coordinate = f'{targetPos[0]},{targetPos[1]}\r'
+    ser.write(coordinate.encode())
+    print("Sent:",coordinate)
+    ser.close()
 
 # Function to generate a unique color for each track ID
 def get_color(track_id):
@@ -426,7 +427,7 @@ def capture_webcam(frame_rate = 4, frame_predict = 4):
     frames = []
     frame_count = 0
     vid = "/home/ciis/Desktop/aldy_septi/30d_2s1.mp4"
-    cap = cv2.VideoCapture(vid)  # '0' if webcam, "vid" if video
+    cap = cv2.VideoCapture(0)  # '0' if webcam, "vid" if video
 
     while frame_count < frame_predict * frame_rate:
         _, frame = cap.read()
@@ -437,12 +438,10 @@ def capture_webcam(frame_rate = 4, frame_predict = 4):
 def main():
     print("AAAAA")
     args = parse_args()
-    model = YOLO('yolov8l.pt')  # Replace with your model path
+    model = YOLO('yolov8s.pt')  # Replace with your model path
 
     # Start capturing video from the webcam
     # cap = cv2.VideoCapture(0)
-    ctime=0
-    ptime = 0
 
     tmp_dir = tempfile.TemporaryDirectory()
 
@@ -457,6 +456,7 @@ def main():
         num_frame = len(original_frames)
         print(num_frame)
         h, w, _ = original_frames[0].shape
+        startTime = time.time()
 
         #print("What is frame_path: " + str(frame_paths))
         #print("What is original_frames: " + str(original_frames))
@@ -465,7 +465,7 @@ def main():
         # get Human detection results
         print("test human detection")
 
-        #method 1
+        #method 1 mmdet
         # human_detections, _ = detection_inference(
         #     args.det_config,
         #     args.det_checkpoint,
@@ -475,9 +475,25 @@ def main():
 
         # processed_detections = human_detections 
 
-        #method 2
+        # METHOD 2 - YOLO
         human_detections = model(original_frames, classes=[0])  # Detect only people (class 0)
         
+        #Tracking
+        conf_thres = 0.5
+        dets = []
+        for box in human_detections[0].boxes.cpu().numpy():
+            if box.conf[0].astype(float).round(2) > conf_thres:
+                x1, y1, x2, y2 = box.xyxy[0].astype(float).round(2)
+                conf = box.conf[0].astype(float).round(2)
+                cls = box.cls[0].astype(int)
+                print(x1, y1, x2, y2, "conf:",conf, "cls:", cls)
+                dets.append([x1, y1, x2, y2, conf, cls])
+
+        dets = np.array(dets)
+        res = tracker.update(dets, original_frames)
+
+
+        #Pose estimation Preprocessing
         processed_detections = []
         for frame_idx in range(len(original_frames)):  # Loop over frames
             frame_detections = []  # Temporary list for storing frame detections
@@ -564,6 +580,9 @@ def main():
 
         vis_frames = visualize(args, frames, stdet_results, pose_datasample,
                             None)
+                            
+        endTime = time.time()
+        cv2.putText(vis_frames[0], f'FPS: {1/(endTime - startTime):.2f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
         cv2.imshow("Webcam Feed", vis_frames[0])
         #vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
         #vid.write_videofile(args.out_filename)
@@ -576,6 +595,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-

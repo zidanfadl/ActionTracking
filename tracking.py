@@ -8,7 +8,9 @@ from boxmot import StrongSort
 from ultralytics import YOLO
 
 font = cv2.FONT_HERSHEY_SIMPLEX
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device(0)
+
 model = YOLO('yolov8s.pt')
 tracker = StrongSort(
         reid_weights=Path('osnet_x0_25_msmt17.pt'),
@@ -17,7 +19,7 @@ tracker = StrongSort(
     )
 
 def sendData(targetPos):
-    ser = serial.Serial(port='COM4', timeout=1,baudrate=9600)
+    ser = serial.Serial(port='/dev/ttyUSB0', timeout=1,baudrate=9600)
     coordinate = f'{targetPos[0]},{targetPos[1]}\r'
     ser.write(coordinate.encode())
     print("Sent:",coordinate)
@@ -27,7 +29,7 @@ def targetTracking(coor_dets):
     targetPos = None
     for coor_det in coor_dets:
         x, y, track_id = coor_det
-        if track_id == 1:
+        if track_id < 10:
             targetPos = (x, y)
             sendData(targetPos)
             break
@@ -59,7 +61,7 @@ def draw_activity_area(frame, thickness=1):
 
 def main():
     vid = "test.mp4"
-    cap = cv2.VideoCapture(3)
+    cap = cv2.VideoCapture(0)
     # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)       #webcam
     # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 720)
     
@@ -86,7 +88,10 @@ def main():
                 dets.append([x1, y1, x2, y2, conf, cls])
 
         dets = np.array(dets)
+        print("what inside dets:" +str(dets))
+        print("what inside original frames:" + str(frame))
         res = tracker.update(dets, frame)
+        print(res)
 
         frame, coor_dets = draw_bboxes(res, frame)
         targetTracking(coor_dets)

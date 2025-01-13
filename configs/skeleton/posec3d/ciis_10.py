@@ -1,4 +1,4 @@
-_base_ = '../../../mmaction2\configs\_base_\default_runtime.py'
+_base_ = '../../../mmaction2/configs/_base_/default_runtime.py'
 
 default_hooks = dict(
     runtime_info=dict(type='RuntimeInfoHook'),

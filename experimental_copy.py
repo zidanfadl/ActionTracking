@@ -92,8 +92,10 @@ def visualize(args,
     frames_ = cp.deepcopy(frames)
     frames_ = [mmcv.imconvert(f, 'bgr', 'rgb') for f in frames_]
     nf, na = len(frames), len(annotations)
+    if na == 0:
+        na+=1
     assert nf % na == 0
-    nfpa = len(frames) // len(annotations)
+    nfpa = len(frames) // na
     anno = None
     h, w, _ = frames[0].shape
     scale_ratio = np.array([w, h, w, h])
@@ -133,6 +135,7 @@ def visualize(args,
                 if not len(label):
                     continue
                 score = ann[2]
+                track_id = ann[3]
                 box = (box * scale_ratio).astype(np.int64)
                 st, ed = tuple(box[:2]), tuple(box[2:])
                 if not pose_data_samples:
@@ -141,10 +144,12 @@ def visualize(args,
                 for k, lb in enumerate(label):
                     if k >= max_num:
                         break
-                    text = abbrev(lb)
-                    text = ': '.join([text, f'{(score[k]*100):.1f}%'])
+                    text1 = abbrev(lb)
+                    text1 = ': '.join([text1, f'{(score[k]*100):.1f}%'])
+                    text2 = f'ID: {int(track_id)}'
                     location = (0 + st[0], 18 + k * 18 + st[1])
-                    textsize = cv2.getTextSize(text, FONTFACE, FONTSCALE,
+                    location2 = (0 + st[0], 18 + k * 18 + st[1]-25)
+                    textsize = cv2.getTextSize(text1, FONTFACE, FONTSCALE,
                                                THICKNESS)[0]
                     textwidth = textsize[0]
                     diag0 = (location[0] + textwidth, location[1] - 14)
@@ -152,7 +157,9 @@ def visualize(args,
                     cv2.rectangle(frame, diag0, diag1, plate[k + 1], -1)
                     bahaya = ['melempar', 'membidik senapan', 'membidik pistol', 'memukul', 'menendang', 'menusuk']
                     FONTCOLOR = (255, 0, 0) if lb in bahaya else (255, 255, 255)
-                    cv2.putText(frame, text, location, FONTFACE, FONTSCALE,
+                    cv2.putText(frame, text2, location2, FONTFACE, FONTSCALE,
+                                FONTCOLOR, THICKNESS, LINETYPE)
+                    cv2.putText(frame, text1, location, FONTFACE, FONTSCALE,
                                 FONTCOLOR, THICKNESS, LINETYPE)
 
     return frames_
@@ -265,7 +272,7 @@ def abbrev(name):
     return name
 
 
-def pack_result(human_detection, result, img_h, img_w):
+def pack_result(human_detection, result, img_h, img_w, track_id_list):
     """Short summary.
 
     Args:
@@ -273,6 +280,7 @@ def pack_result(human_detection, result, img_h, img_w):
         result (type): The predicted label of each human proposal.
         img_h (int): The image height.
         img_w (int): The image width.
+        track_id_list (list[int]): The list of ID of the tracked object.
 
     Returns:
         tuple: Tuple of human proposal, label name and label score.
@@ -282,11 +290,10 @@ def pack_result(human_detection, result, img_h, img_w):
     results = []
     if result is None:
         return None
-    for prop, res in zip(human_detection, result):
+    for prop, res, id in zip(human_detection, result, track_id_list):
         res.sort(key=lambda x: -x[1])
         results.append(
-            (prop.data.cpu().numpy(), [x[0] for x in res], [x[1]
-                                                            for x in res]))
+            (prop.data.cpu().numpy(), [x[0] for x in res], [x[1] for x in res], id))
     return results
 
 
@@ -432,10 +439,37 @@ def capture_webcam(frame_rate = 4, frame_predict = 4):
         frame_count += 1
     return frames
 
+def draw_bboxes(annotation, frame, thickness=2):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    coor_dets = []
+    for person in annotation:
+        x1, y1, x2, y2, track_id, conf, cls,_ = person
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), int(thickness))
+        cv2.putText(frame, f'ID: {int(track_id)}', (x1, y1-40), font, 0.5, (0, 255, 0), thickness)
+        cv2.putText(frame, f'Conf: {conf:.2f}', (x1, y1-10), font, 0.5, (0, 255, 0), thickness)
+        
+        # Draw center coordinate
+        center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
+        cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
+        cv2.putText(frame, f'({center_x}, {center_y})', (center_x, center_y - 10), font, 0.5, (0, 0, 255), thickness)
+        coor_dets.append([center_x, center_y, track_id])
+
+    return frame, coor_dets
+
+def draw_activity_area(frame, thickness=1):
+    height, width, _ = frame.shape
+    margin = 70
+    top_left = (margin, margin)
+    bottom_right = (width - margin, height - margin)
+    cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), thickness)
+    return frame
+
 def main():
     print("AAAAA")
     args = parse_args()
     model = YOLO('yolov8l.pt')  # Replace with your model path
+    font = cv2.FONT_HERSHEY_SIMPLEX
 
     # Start capturing video from the webcam
     # cap = cv2.VideoCapture(0)
@@ -452,9 +486,11 @@ def main():
 
     while True:
         original_frames = capture_webcam(frame_rate, frame_predict)
+        first_frame = original_frames[0]
         num_frame = len(original_frames)
         print(num_frame)
         h, w, _ = original_frames[0].shape
+        start = time.time()
 
         #print("What is frame_path: " + str(frame_paths))
         #print("What is original_frames: " + str(original_frames))
@@ -485,8 +521,27 @@ def main():
                 dets.append([x1, y1, x2, y2, conf, cls])
 
         dets = np.array(dets)
+        tracking_frame = np.array(first_frame)
+
+        print("inside dets frame:" + str(dets))
+        print("inside origial frame:" + str(tracking_frame))
         
-        res = tracker.update(dets, original_frames)
+        target = tracker.update(dets, tracking_frame)
+        print("target is: " + str(target) + str(len(target)))
+        if len(target) == 0:
+            continue
+        
+        target_id_list = [ int(x[4]) for x in target ]
+        print("our target id list: " + str(target_id_list))
+
+        #frame, coor_dets = draw_bboxes(target, original_frames[0])
+        # targetTracking(coor_dets)
+        # print(frame.shape)
+
+        #end = time.time()
+        #cv2.putText(frame, f'FPS: {1/(end-start):.2f}', (10, 50), font, 1.5, (0, 255, 255), 4)
+        #cv2.imshow('frame', frame)
+
 
         # POse estimation
         human_detections = []
@@ -548,7 +603,9 @@ def main():
         for timestamp, prediction in zip(timestamps, stdet_preds):
             human_detection = human_detections[timestamp - 1]
             stdet_results.append(
-                pack_result(human_detection, prediction, new_h, new_w))
+                pack_result(human_detection, prediction, new_h, new_w, 
+                            target_id_list)
+                            )
 
         def dense_timestamps(timestamps, n):
             """Make it nx frames."""
@@ -572,11 +629,16 @@ def main():
             pose_datasample[timestamp - 1] for timestamp in output_timestamps
         ]
 
+        print("what inside stdet:", stdet_results)
         vis_frames = visualize(args, frames, stdet_results, pose_datasample,
                             None)
+        
+        end = time.time()
+        cv2.putText(vis_frames[0], f'FPS: {1/(end-start):.2f}', (10, 50), font, 1.5, (0, 255, 255), 4)
         cv2.imshow("Webcam Feed", vis_frames[0])
-        #vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
-        #vid.write_videofile(args.out_filename)
+
+        vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
+        vid.write_videofile(args.out_filename)
 
         tmp_dir.cleanup()
 

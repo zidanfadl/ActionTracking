@@ -14,7 +14,7 @@ from mmaction.apis import (detection_inference, inference_recognizer,
 from mmaction.registry import VISUALIZERS
 from mmaction.utils import frame_extract
 
-# import moviepy.editor as mpy
+import moviepy.editor as mpy
 
 # import torch
 import torchvision
@@ -34,13 +34,19 @@ FONTSCALE = 1.25
 THICKNESS = 2  # int
 LINETYPE = 1
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device(0)  # Change to 'cuda' if you have a GPU available
 
 tracker = StrongSort(
     reid_weights=Path('osnet_x0_25_msmt17.pt'),  # ReID model to use
     device=device,
     half=False,
 )
+# arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=115200, timeout=1)
+
+def sendData(pan, tilt):
+    command = f"DEG {pan},{tilt}\n"
+    # arduino.write(command.encode())
+    print(f"Sent command: {command}")
 
 # Function to generate a unique color for each track ID
 def get_color(track_id):
@@ -131,8 +137,6 @@ def visualize(args,
                 st, ed = tuple(box[:2]), tuple(box[2:])
                 if not pose_data_samples:
                     cv2.rectangle(frame, st, ed, plate[0], 2)
-
-                
 
                 for k, lb in enumerate(label):
                     if k >= max_num:
@@ -431,7 +435,7 @@ def capture_webcam(frame_rate = 4, frame_predict = 4):
 def main():
     print("AAAAA")
     args = parse_args()
-    model = YOLO('yolov8s.pt')  # Replace with your model path
+    model = YOLO('yolov8l.pt')  # Replace with your model path
 
     # Start capturing video from the webcam
     # cap = cv2.VideoCapture(0)
@@ -458,8 +462,7 @@ def main():
 
         # get Human detection results
         print("test human detection")
-
-        #method 1
+ 
         # human_detections, _ = detection_inference(
         #     args.det_config,
         #     args.det_checkpoint,
@@ -468,28 +471,25 @@ def main():
         #     device=args.device)
 
         # processed_detections = human_detections 
-
-        #method 2
-        human_detections = model(original_frames, classes=[0])  # Detect only people (class 0)
+        results = model(original_frames, classes=[0])  # Detect only people (class 0)
         
-        processed_detections = []
+        human_detections = []
         for frame_idx in range(len(original_frames)):  # Loop over frames
             frame_detections = []  # Temporary list for storing frame detections
 
             # Get YOLO detections for the current frame
-            frame_results = human_detections[frame_idx].boxes  # Modify this if results are batched differently
+            frame_results = results[frame_idx].boxes  # Modify this if results are batched differently
             for detection in frame_results:
                 x1, y1, x2, y2 = detection.xyxy[0].cpu().numpy()  # Bounding box coordinates
                 frame_detections.append([x1, y1, x2, y2])  # Append only bbox (no conf, cls)
 
             if frame_detections:  # If detections exist for the frame
-                processed_detections.append(np.array(frame_detections, dtype=np.float32))
+                human_detections.append(np.array(frame_detections, dtype=np.float32))
             else:  # No detections for this frame
-                processed_detections.append(np.empty((0, 4), dtype=np.float32))
-
-        # check results
+                human_detections.append(np.empty((0, 4), dtype=np.float32))
+                
         print("===== HUMAN DETECTION =====")
-        print(processed_detections)
+        print(human_detections)
         print("===========================")
         
         # get Pose estimation results
@@ -499,7 +499,7 @@ def main():
             args.pose_config,
             args.pose_checkpoint,
             original_frames,
-            processed_detections,
+            human_detections,
             device=args.device)
 
         # resize frames to shortside 720
@@ -556,6 +556,7 @@ def main():
             pose_datasample[timestamp - 1] for timestamp in output_timestamps
         ]
 
+        print("what inside anno:", stdet_results)
         vis_frames = visualize(args, frames, stdet_results, pose_datasample,
                             None)
         cv2.imshow("Webcam Feed", vis_frames[0])
@@ -570,6 +571,5 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
 

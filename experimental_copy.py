@@ -148,18 +148,18 @@ def visualize(args,
                     text1 = ': '.join([text1, f'{(score[k]*100):.1f}%'])
                     text2 = f'ID: {int(track_id)}'
                     location = (0 + st[0], 18 + k * 18 + st[1])
-                    location2 = (0 + st[0], 18 + k * 18 + st[1]-25)
+                    location2 = (0 + st[0], 18 + k * 18 + st[1]+25)
                     textsize = cv2.getTextSize(text1, FONTFACE, FONTSCALE,
                                                THICKNESS)[0]
                     textwidth = textsize[0]
                     diag0 = (location[0] + textwidth, location[1] - 14)
-                    diag1 = (location[0], location[1] + 2)
+                    diag1 = (location[0], location[1] + 27)
                     cv2.rectangle(frame, diag0, diag1, plate[k + 1], -1)
                     bahaya = ['melempar', 'membidik senapan', 'membidik pistol', 'memukul', 'menendang', 'menusuk']
                     FONTCOLOR = (255, 0, 0) if lb in bahaya else (255, 255, 255)
-                    cv2.putText(frame, text2, location2, FONTFACE, FONTSCALE,
+                    cv2.putText(frame, text2, location, FONTFACE, FONTSCALE,
                                 FONTCOLOR, THICKNESS, LINETYPE)
-                    cv2.putText(frame, text1, location, FONTFACE, FONTSCALE,
+                    cv2.putText(frame, text1, location2, FONTFACE, FONTSCALE,
                                 FONTCOLOR, THICKNESS, LINETYPE)
 
     return frames_
@@ -431,7 +431,7 @@ def capture_webcam(frame_rate = 4, frame_predict = 4):
     frames = []
     frame_count = 0
     vid = "/home/ciis/Desktop/aldy_septi/30d_2s1.mp4"
-    cap = cv2.VideoCapture(0)  # '0' if webcam, "vid" if video
+    cap = cv2.VideoCapture(-1)  # '0' if webcam, "vid" if video
 
     while frame_count < frame_predict * frame_rate:
         _, frame = cap.read()
@@ -468,7 +468,7 @@ def draw_activity_area(frame, thickness=1):
 def main():
     print("AAAAA")
     args = parse_args()
-    model = YOLO('yolov8l.pt')  # Replace with your model path
+    model = YOLO('yolov8_8.engine')  # Replace with your model path
     font = cv2.FONT_HERSHEY_SIMPLEX
 
     # Start capturing video from the webcam
@@ -637,8 +637,8 @@ def main():
         cv2.putText(vis_frames[0], f'FPS: {1/(end-start):.2f}', (10, 50), font, 1.5, (0, 255, 255), 4)
         cv2.imshow("Webcam Feed", vis_frames[0])
 
-        vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
-        vid.write_videofile(args.out_filename)
+        # vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
+        # vid.write_videofile(args.out_filename)
 
         tmp_dir.cleanup()
 

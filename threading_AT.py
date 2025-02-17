@@ -21,7 +21,7 @@ import copy as cp
 import moviepy.editor as mpy
 
 # Configuration
-model= YOLO('yolov8n.pt')
+model= YOLO('yolov8n.pt')           # YOLO Model
 tracker = StrongSort(
         reid_weights=Path('osnet_x0_25_msmt17.pt'),
         device= torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
@@ -64,6 +64,16 @@ class arg_parser:
         self.device = torch.device(0)
         self.output_stepsize = 1
         self.cfg_options={}
+
+#####################################
+def hex2color(h):
+    """Convert the 6-digit hex string to tuple of 3 int value (RGB)"""
+    return (int(h[:2], 16), int(h[2:4], 16), int(h[4:], 16))
+
+
+PLATEBLUE = '03045e-023e8a-0077b6-0096c7-00b4d8-48cae4'
+PLATEBLUE = PLATEBLUE.split('-')
+PLATEBLUE = [hex2color(h) for h in PLATEBLUE]
 
 #====================================
 # MMaction Visualize Function

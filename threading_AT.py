@@ -21,9 +21,9 @@ import copy as cp
 import moviepy.editor as mpy
 
 # Configuration
-model= YOLO('yolov8_8.engine')
+model= YOLO('assets/weigth/yolov8_8.engine')
 tracker = StrongSort(
-        reid_weights=Path('osnet_x0_25_msmt17.pt'),
+        reid_weights=Path('assets/weigth/osnet_x0_25_msmt17.pt'),
         device= torch.device(0 if torch.cuda.is_available() else 'cpu'),
         half=False
     )
@@ -110,6 +110,9 @@ def visualize_frames_with_annotations(  args,
     num_frames = len(frames_copy)
     num_annotations = len(annotations) if annotations else 1
 
+    print(f"num_frames: {num_frames}")
+    print(f"num anno: {num_annotations}")
+
     # Ensure the number of frames is divisible by the number of annotations
     assert num_frames % num_annotations == 0, "Number of frames must be divisible by the number of annotations."
 
@@ -178,10 +181,10 @@ def visualize_frames_with_annotations(  args,
 
                     # Calculate text positions
                     label_position = (start_point[0], start_point[1] + 18 + label_idx * 18)
-                    track_id_position = (start_point[0], start_point[1] + 18 + label_idx * 18 - 25)
+                    track_id_position = (start_point[0], start_point[1] + 18 + label_idx * 18 + 25)
 
                     # Draw background rectangle for the label
-                    text_size = cv2.getTextSize(label_score_text, FONTFACE, FONTSCALE, THICKNESS)[0]
+                    text_size = cv2.getTextSize(label_score_text, FONT, FONT_SCALE, FONT_THICKNESS)[0]
                     text_width = text_size[0]
                     rect_top_right = (label_position[0] + text_width, label_position[1] - 14)
                     rect_bottom_left = (label_position[0], label_position[1] + 2)
@@ -192,8 +195,8 @@ def visualize_frames_with_annotations(  args,
                     text_color = (255, 0, 0) if label_text in danger_actions else (255, 255, 255)
 
                     # Draw text on the frame
-                    cv2.putText(current_frame, track_id_text, track_id_position, FONTFACE, FONTSCALE, text_color, THICKNESS, LINETYPE)
-                    cv2.putText(current_frame, label_score_text, label_position, FONTFACE, FONTSCALE, text_color, THICKNESS, LINETYPE)
+                    cv2.putText(current_frame, track_id_text, track_id_position, FONT, FONT_SCALE, text_color, FONT_THICKNESS, LINETYPE)
+                    cv2.putText(current_frame, label_score_text, label_position, FONT, FONT_SCALE, text_color, FONT_THICKNESS, LINETYPE)
 
     return frames_copy
 
@@ -239,8 +242,13 @@ def pack_result(human_detection, result, img_h, img_w, track_id_list):
     human_detection[:, 0::2] /= img_w
     human_detection[:, 1::2] /= img_h
     results = []
-    if result is None:
+    if (result ) is None:
         return None
+    
+    print(f"\nwhat in inside humandet: {str(human_detection)}   len: {len(human_detection)}")
+    print(f"what in inside result: {str(result)}    len: {len(result)}")
+    print(f"what in inside track_id_list: {str(track_id_list)}    len: {len(track_id_list)}")
+    
     for prop, res, id in zip(human_detection, result, track_id_list):
         res.sort(key=lambda x: -x[1])
         results.append(
@@ -499,12 +507,19 @@ def process_and_display(batchFrames, fps):
         det[:, 1:4:2] *= h_ratio
         human_detections[i] = torch.from_numpy(det[:, :4]).to(args.device)
 
+    print("what inside stdet_preds: "+str(stdet_preds))
+    print("how many timestamp:"+ str(len(timestamps)))
+
     stdet_results = []
-    for timestamp, prediction in zip(timestamps, stdet_preds):
+    # for listTarget in targetFrameList:
+    #     # if len(listTarget[0]) == 0:
+    #     #     continue
+
+    for timestamp, prediction, listTarget in zip(timestamps, stdet_preds, targetFrameList):
         human_detection = human_detections[timestamp - 1]
         stdet_results.append(
             pack_result(human_detection, prediction, new_h, new_w, 
-                        targetFrameList)
+                        listTarget)
                         )
 
     def dense_timestamps(timestamps, n):
@@ -527,8 +542,9 @@ def process_and_display(batchFrames, fps):
     pose_datasample = [
         pose_datasample[timestamp - 1] for timestamp in output_timestamps
     ]
-
+    
     print("what inside stdet:", stdet_results)
+    print("how many frames:", len(frames))
     vis_frames = visualize_frames_with_annotations(args, frames, stdet_results, pose_datasample,
                                                                                             None)
     #====================================
@@ -562,7 +578,7 @@ def process_and_display(batchFrames, fps):
                 cv2.putText(frame, text2, location2, FONT, FONT_SCALE, FONTCOLOR, FONT_THICKNESS, LINETYPE)
         """
     for frame in vis_frames:
-        cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30), FONT, 1, (0, 255, 255), 2)
         cv2.imshow('Live Inference', frame)
         
         # Check for exit key

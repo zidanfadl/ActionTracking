@@ -10,7 +10,7 @@ default_hooks = dict(
     sync_buffers=dict(type='SyncBuffersHook'))
 
 
-# load_from='../../../work_dirs/ciis_10_0lr2_1/epoch_24.pth'
+load_from='../../../work_dirs/ciis_21-1/epoch_1120.pth'
 
 
       # model (:obj:`torch.nn.Module` or dict): The model to be run. It can be

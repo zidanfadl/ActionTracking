@@ -16,42 +16,11 @@ from mmaction.utils import frame_extract
 
 import moviepy.editor as mpy
 
-# import torch
-import torchvision
-# import cv2
-import time
-import serial
-# import numpy as np
-from ultralytics import YOLO
-from ultralytics.utils.plotting import Annotator
-from pathlib import Path
-from boxmot import StrongSort
-
-
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
 FONTSCALE = 1.25
 
 THICKNESS = 2  # int
 LINETYPE = 1
-
-device = torch.device(0)  # Change to 'cuda' if you have a GPU available
-
-tracker = StrongSort(
-    reid_weights=Path('assets/weigth/osnet_x0_25_msmt17.pt'),  # ReID model to use
-    device=device,
-    half=False,
-)
-# arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=115200, timeout=1)
-
-def sendData(pan, tilt):
-    command = f"DEG {pan},{tilt}\n"
-    # arduino.write(command.encode())
-    print(f"Sent command: {command}")
-
-# Function to generate a unique color for each track ID
-def get_color(track_id):
-    np.random.seed(int(track_id))
-    return tuple(np.random.randint(0, 255, 3).tolist())
 
 def hex2color(h):
     """Convert the 6-digit hex string to tuple of 3 int value (RGB)"""
@@ -92,14 +61,8 @@ def visualize(args,
     frames_ = cp.deepcopy(frames)
     frames_ = [mmcv.imconvert(f, 'bgr', 'rgb') for f in frames_]
     nf, na = len(frames), len(annotations)
-
-    print(f"num_frames: {nf}")
-    print(f"num anno: {na}")
-
-    if na == 0:
-        na+=1
     assert nf % na == 0
-    nfpa = len(frames) // na
+    nfpa = len(frames) // len(annotations)
     anno = None
     h, w, _ = frames[0].shape
     scale_ratio = np.array([w, h, w, h])
@@ -139,7 +102,6 @@ def visualize(args,
                 if not len(label):
                     continue
                 score = ann[2]
-                track_id = ann[3]
                 box = (box * scale_ratio).astype(np.int64)
                 st, ed = tuple(box[:2]), tuple(box[2:])
                 if not pose_data_samples:
@@ -148,22 +110,18 @@ def visualize(args,
                 for k, lb in enumerate(label):
                     if k >= max_num:
                         break
-                    text1 = abbrev(lb)
-                    text1 = ': '.join([text1, f'{(score[k]*100):.1f}%'])
-                    text2 = f'ID: {int(track_id)}'
+                    text = abbrev(lb)
+                    text = ': '.join([text, f'{(score[k]*100):.1f}%'])
                     location = (0 + st[0], 18 + k * 18 + st[1])
-                    location2 = (0 + st[0], 18 + k * 18 + st[1]+25)
-                    textsize = cv2.getTextSize(text1, FONTFACE, FONTSCALE,
+                    textsize = cv2.getTextSize(text, FONTFACE, FONTSCALE,
                                                THICKNESS)[0]
                     textwidth = textsize[0]
                     diag0 = (location[0] + textwidth, location[1] - 14)
-                    diag1 = (location[0], location[1] + 27)
+                    diag1 = (location[0], location[1] + 2)
                     cv2.rectangle(frame, diag0, diag1, plate[k + 1], -1)
                     bahaya = ['melempar', 'membidik senapan', 'membidik pistol', 'memukul', 'menendang', 'menusuk']
                     FONTCOLOR = (255, 0, 0) if lb in bahaya else (255, 255, 255)
-                    cv2.putText(frame, text2, location, FONTFACE, FONTSCALE,
-                                FONTCOLOR, THICKNESS, LINETYPE)
-                    cv2.putText(frame, text1, location2, FONTFACE, FONTSCALE,
+                    cv2.putText(frame, text, location, FONTFACE, FONTSCALE,
                                 FONTCOLOR, THICKNESS, LINETYPE)
 
     return frames_
@@ -276,7 +234,7 @@ def abbrev(name):
     return name
 
 
-def pack_result(human_detection, result, img_h, img_w, track_id_list):
+def pack_result(human_detection, result, img_h, img_w):
     """Short summary.
 
     Args:
@@ -284,7 +242,6 @@ def pack_result(human_detection, result, img_h, img_w, track_id_list):
         result (type): The predicted label of each human proposal.
         img_h (int): The image height.
         img_w (int): The image width.
-        track_id_list (list[int]): The list of ID of the tracked object.
 
     Returns:
         tuple: Tuple of human proposal, label name and label score.
@@ -294,15 +251,11 @@ def pack_result(human_detection, result, img_h, img_w, track_id_list):
     results = []
     if result is None:
         return None
-    
-    print(f"\nwhat in inside humandet: {str(human_detection)}   len: {len(human_detection)}")
-    print(f"what in inside result: {str(result)}    len: {len(result)}")
-    print(f"what in inside track_id_list: {str(track_id_list)}    len: {len(track_id_list)}")
-
-    for prop, res, id in zip(human_detection, result, track_id_list):
+    for prop, res in zip(human_detection, result):
         res.sort(key=lambda x: -x[1])
         results.append(
-            (prop.data.cpu().numpy(), [x[0] for x in res], [x[1] for x in res], id))
+            (prop.data.cpu().numpy(), [x[0] for x in res], [x[1]
+                                                            for x in res]))
     return results
 
 
@@ -345,17 +298,15 @@ def cal_iou(box1, box2):
 
 
 def skeleton_based_stdet(args, label_map, human_detections, pose_results,
-                         num_frame, clip_len, frame_interval, h, w, scele_config):
+                         num_frame, clip_len, frame_interval, h, w):
     window_size = clip_len * frame_interval
     assert clip_len % 2 == 0, 'We would like to have an even clip_len'
     timestamps = np.arange(window_size // 2, num_frame + 1 - window_size // 2,
                            args.predict_stepsize)
 
-    #skeleton_config = mmengine.Config.fromfile(args.skeleton_config)
-    skeleton_config = scele_config
+    skeleton_config = mmengine.Config.fromfile(args.skeleton_config)
     num_class = max(label_map.keys()) + 1  # for CIIS dataset (9 + 1) == len(label_map)
     skeleton_config.model.cls_head.num_classes = num_class
-    print("test here")
     skeleton_stdet_model = init_recognizer(skeleton_config,
                                            args.skeleton_stdet_checkpoint,
                                            args.device)
@@ -436,229 +387,91 @@ def skeleton_based_stdet(args, label_map, human_detections, pose_results,
     return timestamps, skeleton_predictions
 
 
-def capture_webcam(frame_rate = 4, frame_predict = 4):
-    frames = []
-    frame_count = 0
-    vid = "data/tes_video/shitass.mp4"
-    cap = cv2.VideoCapture(vid)  # '0' if webcam, "vid" if video
-
-    while frame_count < frame_predict * frame_rate:
-        _, frame = cap.read()
-        frames.append(frame)
-        frame_count += 1
-    return frames
-
-def draw_bboxes(annotation, frame, thickness=2):
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    coor_dets = []
-    for person in annotation:
-        x1, y1, x2, y2, track_id, conf, cls,_ = person
-        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), int(thickness))
-        cv2.putText(frame, f'ID: {int(track_id)}', (x1, y1-40), font, 0.5, (0, 255, 0), thickness)
-        cv2.putText(frame, f'Conf: {conf:.2f}', (x1, y1-10), font, 0.5, (0, 255, 0), thickness)
-        
-        # Draw center coordinate
-        center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
-        cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
-        cv2.putText(frame, f'({center_x}, {center_y})', (center_x, center_y - 10), font, 0.5, (0, 0, 255), thickness)
-        coor_dets.append([center_x, center_y, track_id])
-
-    return frame, coor_dets
-
-def draw_activity_area(frame, thickness=1):
-    height, width, _ = frame.shape
-    margin = 70
-    top_left = (margin, margin)
-    bottom_right = (width - margin, height - margin)
-    cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), thickness)
-    return frame
-
 def main():
-    print("AAAAA")
     args = parse_args()
-    model = YOLO('assets/weigth/yolov8_v1.pt')  # Replace with your model path
-    font = cv2.FONT_HERSHEY_SIMPLEX
-
-    # Start capturing video from the webcam
-    # cap = cv2.VideoCapture(0)
-    ctime=0
-    ptime = 0
-
     tmp_dir = tempfile.TemporaryDirectory()
+    frame_paths, original_frames = frame_extract(
+        args.video, 720, out_dir=tmp_dir.name)
+    num_frame = len(frame_paths)
+    h, w, _ = original_frames[0].shape
 
-    frame_rate = 2
-    frame_predict = args.predict_stepsize
-    skele_config = mmengine.Config.fromfile(args.skeleton_config)
+    # get Human detection results
+    human_detections, _ = detection_inference(
+        args.det_config,
+        args.det_checkpoint,
+        frame_paths,
+        args.det_score_thr,
+        device=args.device)
 
-    print("Press Q to stop")
+    # get Pose estimation results
+    pose_datasample = None
+    pose_results, pose_datasample = pose_inference(
+        args.pose_config,
+        args.pose_checkpoint,
+        frame_paths,
+        human_detections,
+        device=args.device)
 
-    while True:
-        original_frames = capture_webcam(frame_rate, frame_predict)
-        first_frame = original_frames[0]
-        num_frame = len(original_frames)
-        print(num_frame)
-        h, w, _ = original_frames[0].shape
-        start = time.time()
+    # resize frames to shortside 720
+    # new_w, new_h = mmcv.rescale_size((w, h), (720, np.Inf))
+    new_w, new_h = w, h
+    # frames = [mmcv.imresize(img, (new_w, new_h)) for img in original_frames]
+    frames = original_frames
+    w_ratio, h_ratio = new_w / w, new_h / h
 
-        #print("What is frame_path: " + str(frame_paths))
-        #print("What is original_frames: " + str(original_frames))
-        #print("num_frame:" + str(num_frame))
+    # Load spatio-temporal detection label_map
+    stdet_label_map = load_label_map(args.label_map_stdet)
 
-        # get Human detection results
-        print("test human detection")
- 
-        # human_detections, _ = detection_inference(
-        #     args.det_config,
-        #     args.det_checkpoint,
-        #     original_frames,
-        #     args.det_score_thr,
-        #     device=args.device)
+    stdet_preds = None
 
-        # processed_detections = human_detections 
-        results = model(original_frames, classes=[0])  # Detect only people (class 0)
-        
-        # Tracking
-        conf_thres = 0.5
-        dets = []
-        for box in results[0].boxes.cpu().numpy():
-            if box.conf[0].astype(float).round(2) > conf_thres:
-                x1, y1, x2, y2 = box.xyxy[0].astype(float).round(2)
-                conf = box.conf[0].astype(float).round(2)
-                cls = box.cls[0].astype(int)
-                print(x1, y1, x2, y2, "conf:",conf, "cls:", cls)
-                dets.append([x1, y1, x2, y2, conf, cls])
+    print('Use skeleton-based SpatioTemporal Action Detection')
+    # clip_len, frame_interval = 30, 1
+    clip_len, frame_interval = args.predict_stepsize, 1
+    timestamps, stdet_preds = skeleton_based_stdet(args, stdet_label_map,
+                                                    human_detections,
+                                                    pose_results, num_frame,
+                                                    clip_len,
+                                                    frame_interval, h, w)
+    for i in range(len(human_detections)):
+        det = human_detections[i]
+        det[:, 0:4:2] *= w_ratio
+        det[:, 1:4:2] *= h_ratio
+        human_detections[i] = torch.from_numpy(det[:, :4]).to(args.device)
 
-        dets = np.array(dets)
-        tracking_frame = np.array(first_frame)
+    stdet_results = []
+    for timestamp, prediction in zip(timestamps, stdet_preds):
+        human_detection = human_detections[timestamp - 1]
+        stdet_results.append(
+            pack_result(human_detection, prediction, new_h, new_w))
 
-        print("inside dets frame:" + str(dets))
-        print("inside origial frame:" + str(tracking_frame))
-        
-        target = tracker.update(dets, tracking_frame)
-        print("target is: " + str(target) + str(len(target)))
-        if len(target) == 0:
-            continue
-        
-        target_id_list = [ int(x[4]) for x in target ]
-        print("our target id list: " + str(target_id_list))
+    def dense_timestamps(timestamps, n):
+        """Make it nx frames."""
+        old_frame_interval = (timestamps[1] - timestamps[0])
+        start = timestamps[0] - old_frame_interval / n * (n - 1) / 2
+        new_frame_inds = np.arange(
+            len(timestamps) * n) * old_frame_interval / n + start
+        return new_frame_inds.astype(np.int64)
 
-        #frame, coor_dets = draw_bboxes(target, original_frames[0])
-        # targetTracking(coor_dets)
-        # print(frame.shape)
+    dense_n = int(args.predict_stepsize / args.output_stepsize)
+    # output_timestamps = dense_timestamps(timestamps, dense_n)
+    output_timestamps = dense_timestamps(timestamps, dense_n) + 1
+    frames = [
+        cv2.imread(frame_paths[timestamp - 1])
+        # cv2.imread("../../../Downloads/1280x720-white-solid-color-background.jpg")
+        for timestamp in output_timestamps
+    ]
 
-        #end = time.time()
-        #cv2.putText(frame, f'FPS: {1/(end-start):.2f}', (10, 50), font, 1.5, (0, 255, 255), 4)
-        #cv2.imshow('frame', frame)
+    pose_datasample = [
+        pose_datasample[timestamp - 1] for timestamp in output_timestamps
+    ]
 
+    vis_frames = visualize(args, frames, stdet_results, pose_datasample,
+                        None)
+    vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
+    vid.write_videofile(args.out_filename)
 
-        # POse estimation
-        human_detections = []
-        for frame_idx in range(len(original_frames)):  # Loop over frames
-            frame_detections = []  # Temporary list for storing frame detections
-
-            # Get YOLO detections for the current frame
-            frame_results = results[frame_idx].boxes  # Modify this if results are batched differently
-            for detection in frame_results:
-                x1, y1, x2, y2 = detection.xyxy[0].cpu().numpy()  # Bounding box coordinates
-                frame_detections.append([x1, y1, x2, y2])  # Append only bbox (no conf, cls)
-
-            if frame_detections:  # If detections exist for the frame
-                human_detections.append(np.array(frame_detections, dtype=np.float32))
-            else:  # No detections for this frame
-                human_detections.append(np.empty((0, 4), dtype=np.float32))
-                
-        print("===== HUMAN DETECTION =====")
-        print(human_detections)
-        print("===========================")
-        
-        # get Pose estimation results
-        pose_datasample = None
-        print("test pose detection")
-        pose_results, pose_datasample = pose_inference(
-            args.pose_config,
-            args.pose_checkpoint,
-            original_frames,
-            human_detections,
-            device=args.device)
-
-        # resize frames to shortside 720
-        # new_w, new_h = mmcv.rescale_size((w, h), (720, np.Inf))
-        new_w, new_h = w, h
-        # frames = [mmcv.imresize(img, (new_w, new_h)) for img in original_frames]
-        frames = original_frames
-        w_ratio, h_ratio = new_w / w, new_h / h
-
-        # Load spatio-temporal detection label_map
-        stdet_label_map = load_label_map(args.label_map_stdet)
-
-        stdet_preds = None
-
-        print('Use skeleton-based SpatioTemporal Action Detection')
-        # clip_len, frame_interval = 30, 1
-        clip_len, frame_interval = args.predict_stepsize, 1
-        timestamps, stdet_preds = skeleton_based_stdet(args, stdet_label_map,
-                                                        human_detections,
-                                                        pose_results, num_frame,
-                                                        clip_len,
-                                                        frame_interval, h, w, skele_config)
-        for i in range(len(human_detections)):
-            det = human_detections[i]
-            det[:, 0:4:2] *= w_ratio
-            det[:, 1:4:2] *= h_ratio
-            human_detections[i] = torch.from_numpy(det[:, :4]).to(args.device)
-
-        print("what inside stdet_preds: "+str(stdet_preds))
-        print("how many timestamp:"+ str(len(timestamps)))
-
-        stdet_results = []
-        for timestamp, prediction in zip(timestamps, stdet_preds):
-            human_detection = human_detections[timestamp - 1]
-            stdet_results.append(
-                pack_result(human_detection, prediction, new_h, new_w, 
-                            target_id_list)
-                            )
-
-        def dense_timestamps(timestamps, n):
-            """Make it nx frames."""
-            old_frame_interval = (timestamps[1] - timestamps[0])
-            start = timestamps[0] - old_frame_interval / n * (n - 1) / 2
-            new_frame_inds = np.arange(
-                len(timestamps) * n) * old_frame_interval / n + start
-            return new_frame_inds.astype(np.int64)
-
-        dense_n = int(args.predict_stepsize / args.output_stepsize)
-        # output_timestamps = dense_timestamps(timestamps, dense_n)
-        print(timestamps)
-        output_timestamps = dense_timestamps(timestamps, dense_n) + 1
-        frames = [
-            original_frames[timestamp - 1]
-            # cv2.imread("../../../Downloads/1280x720-white-solid-color-background.jpg")
-            for timestamp in output_timestamps
-        ]   
-
-        pose_datasample = [
-            pose_datasample[timestamp - 1] for timestamp in output_timestamps
-        ]
-
-        print("what inside stdet:", stdet_results)
-        vis_frames = visualize(args, frames, stdet_results, pose_datasample,
-                            None)
-        
-        end = time.time()
-        cv2.putText(vis_frames[0], f'FPS: {1/(end-start):.2f}', (10, 50), font, 1.5, (0, 255, 255), 4)
-        cv2.imshow("Webcam Feed", vis_frames[0])
-
-        # vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
-        # vid.write_videofile(args.out_filename)
-
-        tmp_dir.cleanup()
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+    tmp_dir.cleanup()
 
 
 if __name__ == '__main__':
     main()
-
-

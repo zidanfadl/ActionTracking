@@ -11,9 +11,9 @@ font = cv2.FONT_HERSHEY_SIMPLEX
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = torch.device(0)
 
-model = YOLO('yolov8s.pt')
+model = YOLO('assets/weigth/yolov8_8.engine')
 tracker = StrongSort(
-        reid_weights=Path('osnet_x0_25_msmt17.pt'),
+        reid_weights=Path('assets/weigth/osnet_x0_25_msmt17.pt'),
         device=device,
         half=False
     )
@@ -31,8 +31,10 @@ def targetTracking(coor_dets):
         x, y, track_id = coor_det
         if track_id < 10:
             targetPos = (x, y)
-            sendData(targetPos)
+            # sendData(targetPos)
             break
+
+
 
 def draw_bboxes(annotation, frame, thickness=2):
     coor_dets = []
@@ -53,23 +55,42 @@ def draw_bboxes(annotation, frame, thickness=2):
 
 def draw_activity_area(frame, thickness=1):
     height, width, _ = frame.shape
+    # height, width, _ = frame[0].shape       #batch
     margin = 70
     top_left = (margin, margin)
     bottom_right = (width - margin, height - margin)
     cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), thickness)
     return frame
 
+# batch capture
+def capture_webcam(frame_rate = 4, frame_predict = 4):
+    frames = []
+    frame_count = 0
+    cap = cv2.VideoCapture(-1)  # '0' if webcam, "vid" if video
+
+    while frame_count < frame_predict * frame_rate:
+        _, frame = cap.read()
+        frames.append(frame)
+        frame_count += 1
+    return frames
+
 def main():
-    vid = "test.mp4"
-    cap = cv2.VideoCapture(0)
+    vid = "data/tes_video/DJI_0011_12r_10s_1.mp4"
+    # cap = cv2.VideoCapture(-1, cv2.CAP_V4L2)
+    cap = cv2.VideoCapture(vid)
+
     # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)       #webcam
     # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 720)
     
+
     while True:
+        # frame = capture_webcam(2, 2)
+        # print("frame:{}".format(frame[0].shape))
+        # num_frame = len(frame)
         ret, frame = cap.read()
         if not ret:
             break
-        # frame = cv2.resize(frame, (720, 720))       #video file
+        frame = cv2.resize(frame, (720, 720))       #video file
 
         frame = draw_activity_area(frame)
         start = time.time()
@@ -89,9 +110,9 @@ def main():
 
         dets = np.array(dets)
         print("what inside dets:" +str(dets))
-        print("what inside original frames:" + str(frame))
+        # print("what inside original frames:" + str(frame))
         res = tracker.update(dets, frame)
-        print(res)
+        print('what inside res:', res)
 
         frame, coor_dets = draw_bboxes(res, frame)
         targetTracking(coor_dets)
@@ -103,7 +124,7 @@ def main():
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-    cap.release()
+    # cap.release()
     cv2.destroyAllWindows()
 
 if __name__=="__main__":

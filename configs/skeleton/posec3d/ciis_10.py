@@ -11,6 +11,7 @@ default_hooks = dict(
 
 
 # load_from='../../../work_dirs/ciis_10_0lr2_1/epoch_24.pth'
+# load_from='../../../work_dirs/ciis_21-2/epoch_1120.pth'
 
 
       # model (:obj:`torch.nn.Module` or dict): The model to be run. It can be
@@ -75,7 +76,7 @@ model = dict(
 # work_dir = ""
 
 dataset_type = 'PoseDataset'
-ann_file = 'data/skeleton/ciis_0s5_v3.pkl'  # changed for ciis
+ann_file = 'dataset/2025/train_dataset/ciis_0s5_v3.pkl'  # changed for ciis
 left_kp = [1, 3, 5, 7, 9, 11, 13, 15]
 right_kp = [2, 4, 6, 8, 10, 12, 14, 16]
 train_pipeline = [

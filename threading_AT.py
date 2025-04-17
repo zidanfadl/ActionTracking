@@ -19,22 +19,26 @@ from mmaction.registry import VISUALIZERS
 from mmaction.utils import frame_extract
 import copy as cp
 import moviepy.editor as mpy
+from pathlib import Path
+from datetime import datetime
+import tempfile
+
 
 # Configuration
-model= YOLO('assets/weigth/yolov8_8.engine')
+model= YOLO('assets/weigth/yolov8l.pt')
 tracker = StrongSort(
         reid_weights=Path('assets/weigth/osnet_x0_25_msmt17.pt'),
         device= torch.device(0 if torch.cuda.is_available() else 'cpu'),
         half=False
     )
-batch_size = 4  # Smallest batch size for your model
+batch_size = 16  # Smallest batch size for your model
 camera_index = -1  # Adjust based on your camera
 fps_update_interval = 0.1  # Seconds between FPS updates
 
 # annotation
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 FONT_SCALE = 0.5
-FONT_THICKNESS = 1
+FONT_THICKNESS = 2
 FONTCOLOR = (0, 255, 0)
 LINETYPE = 2
 
@@ -44,26 +48,36 @@ buffer_lock = threading.Lock()
 frame_available = threading.Condition(buffer_lock)
 running = True  # Global flag for controlling threads
 
+videom = False
+save = False
+video_frame_hold = []
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"video_{timestamp}.mp4"
+output_dir = Path("data/out_video")
+output_dir.mkdir(parents=True, exist_ok=True)
+
 # Arguement Parser
 class arg_parser:
     def __init__(self):
-        # self.video = '/home/ciis/Desktop/shitass.mp4'
+        
         # self.out_filename = '/home/ciis/Desktop/shitass_out2.mp4'
-        # self.det_config = 'mmaction2/demo/demo_configs/faster-rcnn_r50_fpn_2x_coco_infer.py'
-        # self.det_checkpoint = 'http://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_2x_coco/faster_rcnn_r50_fpn_2x_coco_bbox_mAP-0.384_20200504_210434-a5d8aa15.pth'
-        # self.det_score_thr = 0.9
+        self.det_config = 'mmaction2/demo/demo_configs/faster-rcnn_r50_fpn_2x_coco_infer.py'
+        self.det_checkpoint = 'http://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_2x_coco/faster_rcnn_r50_fpn_2x_coco_bbox_mAP-0.384_20200504_210434-a5d8aa15.pth'
+        self.det_score_thr = 0.9
         self.pose_config = 'mmaction2/demo/demo_configs/td-hm_hrnet-w32_8xb64-210e_coco-256x192_infer.py'
         self.pose_checkpoint = 'https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w32_coco_256x192-c78dce93_20200708.pth'
         self.skeleton_config = 'configs/skeleton/posec3d/ciis_10.py'
-        self.skeleton_stdet_checkpoint = 'work_dirs/ciis_10_best-550/best_acc_top1_epoch_550.pth'
+        self.skeleton_stdet_checkpoint = 'work_dirs/ciis_21-2/best_acc_top1_epoch_270.pth'
         self.action_score_thr = 0.75
-        self.label_map_stdet = 'data/skeleton/ciis_label_map.txt'
-        self.predict_stepsize = 2
+        self.label_map_stdet = 'mmaction2/tools/data/ciis/ciis_label_map.txt'
+        self.predict_stepsize = 8
         
-        self.output_fps = 4
-        self.device = torch.device(0)
+        self.output_fps = 12     
+        self.device = torch.device('cuda')
         self.output_stepsize = 1
         self.cfg_options={}
+        self.out_filename = output_dir / filename
+        self.video = "data/tes_video/DJI_1.mp4"
 
 
 ####################################
@@ -72,7 +86,7 @@ def hex2color(h):
     return (int(h[:2], 16), int(h[2:4], 16), int(h[4:], 16))
 
 
-PLATEBLUE = '03045e-023e8a-0077b6-0096c7-00b4d8-48cae4'
+PLATEBLUE = '03045e-023e8a-0077b6-0096c7-00b4d8-48cae4-ff0000-ffff00'
 PLATEBLUE = PLATEBLUE.split('-')
 PLATEBLUE = [hex2color(h) for h in PLATEBLUE]
 
@@ -119,6 +133,7 @@ def visualize_frames_with_annotations(  args,
     frames_per_annotation = num_frames // num_annotations
     height, width, _ = frames[0].shape
     scale_ratio = np.array([width, height, width, height])  # Scale ratios for bounding box coordinates
+    danger_id = []
 
     # Add pose estimation results to the frames
     if pose_data_samples:
@@ -156,14 +171,48 @@ def visualize_frames_with_annotations(  args,
 
             for annotation in current_annotation:
                 bbox, label, score, track_id = annotation
-
-                if not label:
-                    continue
-
+                # continue
+            
                 # Scale bounding box coordinates to the frame size
                 bbox = (bbox * scale_ratio).astype(np.int64)
                 start_point = tuple(bbox[:2])  # Top-left corner of the bounding box
                 end_point = tuple(bbox[2:])    # Bottom-right corner of the bounding box
+
+                # if track_id in danger_id:
+                #     danger_text = "BERBAHAYA"
+                #     track_id_text = f'ID: {int(track_id)}'
+                #     text_size = cv2.getTextSize(danger_text, FONT, FONT_SCALE, FONT_THICKNESS)[0]
+                #     text_width = text_size[0]
+
+                #     danger_position = (start_point[0], start_point[1] + 18 )
+                #     track_id_position = (start_point[0], start_point[1] + 18 +25)
+                #     rect_top_right = (danger_position[0] + text_width, danger_position[1] - 14)
+                #     rect_bottom_left = (track_id_position[0], track_id_position[1] + 2)
+                #     cv2.rectangle(current_frame, rect_top_right, rect_bottom_left, plate[6], -1)
+                #     text_color = (255, 255, 255)
+
+                #     cv2.putText(current_frame, danger_text, danger_position, FONT, FONT_SCALE, text_color, FONT_THICKNESS, LINETYPE)
+                #     cv2.putText(current_frame, track_id_text, track_id_position, FONT, FONT_SCALE, text_color, FONT_THICKNESS, LINETYPE)
+                #     continue
+
+                if not label:
+                    track_id_text = f'ID: {int(track_id)}'
+                    text_size = cv2.getTextSize(track_id_text, FONT, FONT_SCALE, FONT_THICKNESS)[0]
+                    text_width = text_size[0]
+                    track_id_position = (start_point[0], start_point[1] + 18 + + 25)
+                    rect_top_right = (track_id_position[0] + text_width, track_id_position[1] - 14)
+                    rect_bottom_left = (track_id_position[0], track_id_position[1] + 2)
+                    cv2.rectangle(current_frame, rect_top_right, rect_bottom_left, plate[0 + 1], -1)
+                    text_color = (255, 255, 255)
+
+                    if int(track_id) in danger_id:
+                        cv2.rectangle(current_frame, rect_top_right, rect_bottom_left, plate[6], -1)
+                    else:
+                        cv2.rectangle(current_frame, rect_top_right, rect_bottom_left, plate[0 + 1], -1)
+                    cv2.putText(current_frame, track_id_text, track_id_position, FONT, FONT_SCALE, text_color, FONT_THICKNESS, LINETYPE)
+
+
+                    continue
 
                 # Draw bounding box if no pose data is available
                 if not pose_data_samples:
@@ -187,12 +236,22 @@ def visualize_frames_with_annotations(  args,
                     text_size = cv2.getTextSize(label_score_text, FONT, FONT_SCALE, FONT_THICKNESS)[0]
                     text_width = text_size[0]
                     rect_top_right = (label_position[0] + text_width, label_position[1] - 14)
-                    rect_bottom_left = (label_position[0], label_position[1] + 2)
-                    cv2.rectangle(current_frame, rect_top_right, rect_bottom_left, plate[label_idx + 1], -1)
+                    rect_bottom_left = (track_id_position[0], track_id_position[1] + 2)
 
                     # Determine text color based on label
-                    danger_actions = ['melempar', 'membidik senapan', 'membidik pistol', 'memukul', 'menendang', 'menusuk']
-                    text_color = (255, 0, 0) if label_text in danger_actions else (255, 255, 255)
+                    # danger_actions = ['melempar', 'membidik senapan', 'membidik pistol', 'memukul', 'menendang', 'menusuk']
+                    danger_actions = ['melempar', 'membidik senapan', 'membidik pistol', 'memukul', 'menendang']
+                    text_color = (255, 255, 255)
+
+                    if label_text in danger_actions or track_id in danger_id:
+                        danger_id.append(int(track_id))
+                        cv2.rectangle(current_frame, rect_top_right, rect_bottom_left, plate[6], -1)
+
+                    else:
+                        cv2.rectangle(current_frame, rect_top_right, rect_bottom_left, plate[label_idx + 1], -1)
+
+                    # text_color = (255, 0, 0) if label_text in danger_actions else (255, 255, 255)
+
 
                     # Draw text on the frame
                     cv2.putText(current_frame, track_id_text, track_id_position, FONT, FONT_SCALE, text_color, FONT_THICKNESS, LINETYPE)
@@ -386,10 +445,12 @@ def skeleton_based_stdet(args, label_map, human_detections, pose_results,
     return timestamps, skeleton_predictions
 #====================================
 
-def capture_frames():
+def capture_frames(args):
     """Continuously capture frames from the camera."""
     global running
+    # cap = cv2.VideoCapture(camera_index if not videom else args.video)
     cap = cv2.VideoCapture(camera_index)
+
     try:
         while running:
             ret, frame = cap.read()
@@ -443,7 +504,7 @@ def process_and_display(batchFrames, fps):
     print("how many: " + str(len(results)))
     conf_thres = 0
     
-    framesDet, human_detections, targetFrameList = [], [], []
+    framesDet, human_detections, targetFrameList, inTracker = [], [], [], []
     for frame_idx, (frame, result) in enumerate(zip(batchFrames, results)):
         dets, detXYXY = [], []
         boxes = result.boxes.cpu().numpy()
@@ -457,13 +518,15 @@ def process_and_display(batchFrames, fps):
 
         #tracker
         target = tracker.update(np.array(dets), np.array(frame))
+        dump = [x for x in target]
+        inTracker.append(dump)
         targetList = [int(x[4]) for x in target]
         targetFrameList.append(targetList if targetList else [])
 
-        print(f"Frame {frame_idx} detections: {dets}")
+        # print(f"Frame {frame_idx} detections: {dets}")
         framesDet.append(dets)
 
-        detXYXY = [det[:4] for det in dets]
+        detXYXY = [det[:4] for det in target]
         human_detections.append(np.array(detXYXY, dtype=np.float32) if detXYXY else np.empty((0, 4), dtype=np.float32))
 
     framesDet = np.array(framesDet, dtype=object)
@@ -472,6 +535,7 @@ def process_and_display(batchFrames, fps):
     print(f"framesDet: {framesDet}")
     print(f"humanDet: {human_detections}")
     print(f"targetList: {targetFrameList}")
+    print(f"inTracker: {inTracker}")
     
     #####################################
     #====================================
@@ -547,36 +611,16 @@ def process_and_display(batchFrames, fps):
     print("how many frames:", len(frames))
     vis_frames = visualize_frames_with_annotations(args, frames, stdet_results, pose_datasample,
                                                                                             None)
+    
+    video_frame_hold.extend(vis_frames)
+    
+    # tmp_dir.cleanup()
+
     #====================================
     #####################################
 
 
-    """
-    # Visualize
-    for frame, detection, targetList in zip(batchFrames, framesDet, targetFrameList):
-        # Add FPS text to frame
-        # res = tracker.update(dets, frame)
-        if len(detection) > 0:
-            for person, id in zip(detection, targetList):
-                x1, y1, x2, y2, conf, _ = person
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                personID = id
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                
-                text1 = f"Confidence: {int(conf*100)}%"
-                text2 = f"ID: {personID}"
-                location1 = (x1+5, y1+15)
-                location2 = (x1+5, y1+30)
 
-                # text1
-                shadow_color = (0, 0, 0)
-                cv2.putText(frame, text1, (location1[0] + 1, location1[1] + 1), FONT, FONT_SCALE, shadow_color, FONT_THICKNESS, LINETYPE)
-                cv2.putText(frame, text1, location1, FONT, FONT_SCALE, FONTCOLOR, FONT_THICKNESS, LINETYPE)
-
-                # text2
-                cv2.putText(frame, text2, (location2[0] + 1, location2[1] + 1), FONT, FONT_SCALE, shadow_color, FONT_THICKNESS, LINETYPE)
-                cv2.putText(frame, text2, location2, FONT, FONT_SCALE, FONTCOLOR, FONT_THICKNESS, LINETYPE)
-        """
     for frame in vis_frames:
         cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30), FONT, 1, (0, 255, 255), 2)
         cv2.imshow('Live Inference', frame)
@@ -584,30 +628,173 @@ def process_and_display(batchFrames, fps):
         # Check for exit key
         if cv2.waitKey(1) & 0xFF == ord('q'):
             running = False
+            if save:
+                vid = mpy.ImageSequenceClip(video_frame_hold, fps=args.output_fps)
+                vid.write_videofile(str(args.out_filename))
             return False
     return True
 
+def spte_acre(args):
+    # args = parse_args()
+    skele_config = mmengine.Config.fromfile(args.skeleton_config)
+
+    tmp_dir = tempfile.TemporaryDirectory()
+    frame_paths, original_frames = frame_extract(
+        args.video, 720, out_dir=tmp_dir.name)
+    num_frame = len(frame_paths)
+    h, w, _ = original_frames[0].shape
+
+    cap=cv2.VideoCapture(args.video)
+    framesDet, human_detections, targetFrameList = [], [], []
+
+    while True:
+        # Detection
+        ret, frame = cap.read()
+        if not ret:
+            break
+        results = model(frame, classes=[0])
+        # torch.cuda.empty_cache()
+        print("how many: " + str(len(results)))
+        conf_thres = 0.5
+        
+
+
+        # framesDet, human_detections, targetFrameList = [], [], []
+        # for frame_idx, (frame, result) in enumerate(zip(args.video, results)):
+        dets, detXYXY = [], []
+        boxes = results[0].boxes.cpu().numpy()
+        for box in boxes:
+            conf = box.conf[0].astype(float).round(2)
+            if conf > conf_thres:
+                x1, y1, x2, y2 = box.xyxy[0].astype(float).round(2)
+                cls = box.cls[0].astype(int)
+                # detXYXY.append([x1, y1, x2, y2])
+                dets.append([x1, y1, x2, y2, conf, cls])
+
+        #tracker
+        target = tracker.update(np.array(dets), np.array(frame))
+        targetList = [int(x[4]) for x in target]
+        targetFrameList.append(targetList if targetList else [])
+
+        # print(f"Frame {frame_idx} detections: {dets}")
+        framesDet.append(dets)
+
+        detXYXY = [det[:4] for det in target]
+        human_detections.append(np.array(detXYXY, dtype=np.float32) if detXYXY else np.empty((0, 4), dtype=np.float32))
+
+    framesDet = np.array(framesDet, dtype=object)
+
+    print(targetFrameList)
+    
+
+    #==================================
+    # human_detections, _ = detection_inference(
+    #     args.det_config,
+    #     args.det_checkpoint,
+    #     frame_paths,
+    #     args.det_score_thr,
+    #     device=args.device)
+    #==================================
+
+    # get Pose estimation results
+    pose_datasample = None
+    pose_results, pose_datasample = pose_inference(
+        args.pose_config,
+        args.pose_checkpoint,
+        frame_paths,
+        human_detections,
+        device=args.device)
+    torch.cuda.empty_cache()
+    
+
+    # resize frames to shortside 720
+    # new_w, new_h = mmcv.rescale_size((w, h), (720, np.Inf))
+    new_w, new_h = w, h
+    # frames = [mmcv.imresize(img, (new_w, new_h)) for img in original_frames]
+    frames = original_frames
+    w_ratio, h_ratio = new_w / w, new_h / h
+
+    # Load spatio-temporal detection label_map
+    stdet_label_map = load_label_map(args.label_map_stdet)
+
+    stdet_preds = None
+
+    print('Use skeleton-based SpatioTemporal Action Detection')
+    # clip_len, frame_interval = 30, 1
+    clip_len, frame_interval = args.predict_stepsize, 1
+    timestamps, stdet_preds = skeleton_based_stdet(args, stdet_label_map,
+                                                    human_detections,
+                                                    pose_results, num_frame,
+                                                    clip_len,
+                                                    frame_interval, h, w, skele_config)
+    for i in range(len(human_detections)):
+        det = human_detections[i]
+        det[:, 0:4:2] *= w_ratio
+        det[:, 1:4:2] *= h_ratio
+        human_detections[i] = torch.from_numpy(det[:, :4]).to(args.device)
+
+    stdet_results = []
+    for timestamp, prediction, listTarget in zip(timestamps, stdet_preds, targetFrameList):
+        human_detection = human_detections[timestamp - 1]
+        stdet_results.append(
+            pack_result(human_detection, prediction, new_h, new_w, 
+                        listTarget)
+                        )
+
+    def dense_timestamps(timestamps, n):
+        """Make it nx frames."""
+        old_frame_interval = (timestamps[1] - timestamps[0])
+        start = timestamps[0] - old_frame_interval / n * (n - 1) / 2
+        new_frame_inds = np.arange(
+            len(timestamps) * n) * old_frame_interval / n + start
+        return new_frame_inds.astype(np.int64)
+
+    dense_n = int(args.predict_stepsize / args.output_stepsize)
+    # output_timestamps = dense_timestamps(timestamps, dense_n)
+    output_timestamps = dense_timestamps(timestamps, dense_n) + 1
+    frames = [
+        cv2.imread(frame_paths[timestamp - 1])
+        # cv2.imread("../../../Downloads/1280x720-white-solid-color-background.jpg")
+        for timestamp in output_timestamps
+    ]
+
+    pose_datasample = [
+        pose_datasample[timestamp - 1] for timestamp in output_timestamps
+    ]
+
+    vis_frames = visualize_frames_with_annotations(args, frames, stdet_results, pose_datasample,
+                        None)
+    vid = mpy.ImageSequenceClip(vis_frames, fps=args.output_fps)
+    vid.write_videofile(str(args.out_filename))
+
+    tmp_dir.cleanup()
+
 if __name__ == "__main__":
     # Start threads
-    capture_thread = threading.Thread(target=capture_frames)
-    process_thread = threading.Thread(target=process_batches)
-
-    try:
-        capture_thread.start()
-        process_thread.start()
-        
-        # Keep main thread active to catch KeyboardInterrupt
-        while capture_thread.is_alive() or process_thread.is_alive():
-            time.sleep(0.1)
-            
-    except KeyboardInterrupt:
-        print("\nShutting down gracefully...")
-    finally:
-        running = False
-        with buffer_lock:
-            frame_available.notify_all()
-        
-        capture_thread.join()
-        process_thread.join()
-        cv2.destroyAllWindows()
+    args = arg_parser()
+    if videom:
+        spte_acre(args)
         print("Program terminated successfully.")
+    else:
+        capture_thread = threading.Thread(target=capture_frames, args=(args,))
+        process_thread = threading.Thread(target=process_batches)
+
+        try:
+            capture_thread.start()
+            process_thread.start()
+            
+            # Keep main thread active to catch KeyboardInterrupt
+            while capture_thread.is_alive() or process_thread.is_alive():
+                time.sleep(0.1)
+                
+        except KeyboardInterrupt:
+            print("\nShutting down gracefully...")
+        finally:
+            running = False
+            with buffer_lock:
+                frame_available.notify_all()
+            
+            capture_thread.join()
+            process_thread.join()
+            cv2.destroyAllWindows()
+            print("Program terminated successfully.")

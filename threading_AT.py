@@ -5,7 +5,7 @@ import time
 from collections import deque
 
 from ultralytics import YOLO        # YOLO and Tracker
-from boxmot import StrongSort
+from boxmot import BotSort
 from pathlib import Path
 import numpy as np
 import torch
@@ -26,12 +26,12 @@ import tempfile
 
 # Configuration
 model= YOLO('assets/weigth/yolov8l.pt')
-tracker = StrongSort(
+tracker = BotSort(
         reid_weights=Path('assets/weigth/osnet_x0_25_msmt17.pt'),
         device= torch.device(0 if torch.cuda.is_available() else 'cpu'),
         half=False
     )
-batch_size = 16  # Smallest batch size for your model
+batch_size = 4  # Smallest batch size for your model
 camera_index = -1  # Adjust based on your camera
 fps_update_interval = 0.1  # Seconds between FPS updates
 
@@ -48,8 +48,8 @@ buffer_lock = threading.Lock()
 frame_available = threading.Condition(buffer_lock)
 running = True  # Global flag for controlling threads
 
-videom = False
-save = False
+videom = True
+save = True
 video_frame_hold = []
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 filename = f"video_{timestamp}.mp4"
@@ -70,14 +70,14 @@ class arg_parser:
         self.skeleton_stdet_checkpoint = 'work_dirs/ciis_21-2/best_acc_top1_epoch_270.pth'
         self.action_score_thr = 0.75
         self.label_map_stdet = 'mmaction2/tools/data/ciis/ciis_label_map.txt'
-        self.predict_stepsize = 8
+        self.predict_stepsize = 2
         
-        self.output_fps = 12     
+        self.output_fps = 12    
         self.device = torch.device('cuda')
         self.output_stepsize = 1
         self.cfg_options={}
         self.out_filename = output_dir / filename
-        self.video = "data/tes_video/DJI_1.mp4"
+        self.video = "data/tes_video/shitass.mp4"
 
 
 ####################################
@@ -549,6 +549,11 @@ def process_and_display(batchFrames, fps):
         human_detections,
         device=args.device)
     
+    print("pose pose_datasample type: ", type(pose_datasample))
+    print("what inside pose_datasample: \n", pose_datasample[-1])
+    print("what inside pose_datasample type: \n", type(pose_datasample[-1]))
+    
+    
     #====================================
     # Action Recognition
     # Load spatio-temporal detection label_map
@@ -705,6 +710,10 @@ def spte_acre(args):
         human_detections,
         device=args.device)
     torch.cuda.empty_cache()
+
+    print("pose pose_datasample type: ", type(pose_datasample))
+    print("what inside pose_datasample: \n", pose_datasample[-1])
+    print("what inside pose_datasample type: \n", type(pose_datasample[-1]))
     
 
     # resize frames to shortside 720

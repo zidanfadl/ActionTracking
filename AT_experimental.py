@@ -61,7 +61,7 @@ frame_available = threading.Condition(buffer_lock)
 running = True  # Global flag for controlling threads
 
 videom = False
-save = False
+save = True
 video_frame_hold = []
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 filename = f"video_{timestamp}.mp4"
@@ -84,7 +84,7 @@ class arg_parser:
         self.label_map_stdet = 'mmaction2/tools/data/ciis/ciis_label_map.txt'
         self.predict_stepsize = 4
         
-        self.device = devie #torch.device('cuda')
+        self.device =  torch.device('cuda')
         self.output_stepsize = 1
         self.output_fps = 16
         self.cfg_options={}
@@ -372,13 +372,10 @@ def skeleton_based_stdet(args, label_map, human_detections, pose_results,
     timestamps = np.arange(window_size // 2, num_frame + 1 - window_size // 2,
                            args.predict_stepsize)
 
-    #skeleton_config = mmengine.Config.fromfile(args.skeleton_config)
-    skeleton_config = scele_config
-    num_class = max(label_map.keys()) + 1  # for CIIS dataset (9 + 1) == len(label_map)
-    skeleton_config.model.cls_head.num_classes = num_class
-    print("Whats inside timestamps: ", str(timestamps))
-    print("Whats inside humdet timestamp 1: ", str(human_detections[timestamps[0] - 1]))
-
+    # #skeleton_config = mmengine.Config.fromfile(args.skeleton_config)
+    # skeleton_config = scele_config
+    # num_class = max(label_map.keys()) + 1  # for CIIS dataset (9 + 1) == len(label_map)
+    # skeleton_config.model.cls_head.num_classes = num_class
 
     skeleton_predictions = []
 
@@ -579,7 +576,7 @@ def process_and_display(batchFrames, fps):
     stdet_preds = None
 
     print('Use skeleton-based SpatioTemporal Action Detection')
-    # clip_len, frame_interval = 30, 1
+
     clip_len, frame_interval = args.predict_stepsize, 1
     timestamps, stdet_preds = skeleton_based_stdet(args, stdet_label_map,
                                                     human_detections,
@@ -587,7 +584,6 @@ def process_and_display(batchFrames, fps):
                                                     clip_len,
                                                     frame_interval, height, width, skele_config)
     
-
     
     for i in range(len(human_detections)):
         det = human_detections[i]
@@ -607,37 +603,7 @@ def process_and_display(batchFrames, fps):
                         listTarget)
                         )
 
-    # def dense_timestamps(timestamps, n):
-    #     """Make it nx frames."""
-    #     old_frame_interval = (timestamps[1] - timestamps[0])
-    #     start = timestamps[0] - old_frame_interval / n * (n - 1) / 2
-    #     new_frame_inds = np.arange(
-    #         len(timestamps) * n) * old_frame_interval / n + start
-    #     return new_frame_inds.astype(np.int64)
-
-    # dense_n = int(args.predict_stepsize / args.output_stepsize)
-    # # dense_n = int(args.predict_stepsize / batch_size)
-
-    # print(timestamps)
-    # output_timestamps = dense_timestamps(timestamps, dense_n) + 1
-    # print("what inside timestamp: ", str(timestamps))
-    # print("what inside out timestamp: ", str(output_timestamps))
-
-    # print("how long batchFrames: ", len(batchFrames))
-    # print("how long out_timestampL: ", len(output_timestamps))
-    # print("how long pose befoe: ", len(pose_datasample))
-
-    # frames = [
-    #     batchFrames[timestamp - 1]
-    #     for timestamp in output_timestamps
-    # ]   
     frames = batchFrames
-    # posea= [
-    #     pose_datasample[timestamp - 1] for timestamp in output_timestamps
-    # ]
-    # print("how long pose after: ", len(pose_datasample))
-    # print("is frame = batchframe: ", frames == batchFrames)
-    # print("is posedat = posea: ", pose_datasample == posea)
 
     print("what inside stdet:", stdet_results)
     print("how many frames:", len(frames))

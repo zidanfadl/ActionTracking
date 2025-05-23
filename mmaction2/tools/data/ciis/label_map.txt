@@ -1,0 +1,10 @@
+0: berdiri
+1: berjalan
+2: berjongkok
+3: merayap
+4: melempar
+5: membidik (l. panjang)
+6: membidik (l. pendek)
+7: memukul
+8: menendang
+9: menusuk

@@ -12,6 +12,7 @@ default_hooks = dict(
 
 # load_from='../../../work_dirs/ciis_10_0lr2_1/epoch_24.pth'
 # load_from='../../../work_dirs/ciis_21-2/epoch_1120.pth'
+load_from = "https://download.openmmlab.com/mmaction/v1.0/skeleton/posec3d/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint_20220815-38db104b.pth"
 
 
       # model (:obj:`torch.nn.Module` or dict): The model to be run. It can be
@@ -136,7 +137,7 @@ test_pipeline = [
         #     skipping training steps. Defaults to None.
         #     See :meth:`build_dataloader` for more details.
 train_dataloader = dict(
-    batch_size=256,
+    batch_size=64,
     num_workers=1,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=False),
@@ -155,7 +156,7 @@ train_dataloader = dict(
         #     skipping validation steps. Defaults to None.
         #     See :meth:`build_dataloader` for more details.
 val_dataloader = dict(
-    batch_size=256,
+    batch_size=64,
     num_workers=1,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=False),
@@ -198,7 +199,7 @@ val_evaluator = [dict(type='AccMetric')]
 test_evaluator = val_evaluator
 
 train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=1500, val_begin=10, val_interval=10)
+    type='EpochBasedTrainLoop', max_epochs=1400, val_begin=10, val_interval=10)
 
 
         # val_cfg (dict, optional): A dict to build a validation loop. If it does
@@ -244,7 +245,7 @@ param_scheduler = [
 	# Note that this only implements the cosine annealing part of SGDR, and not
 	# the restarts.
         eta_min=0.02,
-        T_max=1500,  # https://www.youtube.com/watch?v=WgwBRqhdIrQ&t=468s
+        T_max=1400,  # https://www.youtube.com/watch?v=WgwBRqhdIrQ&t=468s
         by_epoch=True,
         convert_to_iter_based=True)
 ]

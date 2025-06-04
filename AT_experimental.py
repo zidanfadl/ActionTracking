@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+
 import mmcv                         # OpenMMLab
 import mmengine
 from mmengine import DictAction
@@ -39,12 +40,12 @@ pose_cfg = 'mmaction2/demo/demo_configs/td-hm_hrnet-w32_8xb64-210e_coco-256x192_
 pose_ckpt = 'https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w32_coco_256x192-c78dce93_20200708.pth'
 pose_model = init_model(pose_cfg, pose_ckpt, device=devie)
 
-skel_cfg = 'configs/skeleton/posec3d/ciis_10.py'
-skel_ckpt = 'work_dirs/ciis_21_v4/best_acc_top1_epoch_550.pth'
+skel_cfg = 'configs/skeleton/posec3d/ciis_10_mod.py'
+skel_ckpt = 'work_dirs/ciis_21-v5/best_acc_top1_epoch_1580.pth'
 skeleton_stdet_model = init_recognizer(skel_cfg, skel_ckpt, devie)
 
-batch_size = 4  # Smallest batch size for your model
-camera_index = -1  # Adjust based on your camera
+batch_size = 2  # Smallest batch size for your model
+camera_index = 2  # Adjust based on your camera
 fps_update_interval = 0.1  # Seconds between FPS updates
 
 # annotation
@@ -82,15 +83,16 @@ class arg_parser:
         self.skeleton_stdet_checkpoint = 'work_dirs/ciis_21-2/best_acc_top1_epoch_270.pth'
         self.action_score_thr = 0.75
         self.label_map_stdet = 'mmaction2/tools/data/ciis/ciis_label_map.txt'
-        self.predict_stepsize = 4
+        self.predict_stepsize = 2
         
         self.device =  torch.device('cuda')
         self.output_stepsize = 1
         self.output_fps = 16
         self.cfg_options={}
         self.out_filename = output_dir / filename
-        self.video = "data/tes_video/DJI_1.mp4"
+        self.video = 'assets/video/Maximo/rifle_aim.mp4'
 
+        # self.video = "data/tes_video/DJI_1.mp4"
 
 ####################################
 def hex2color(h):
@@ -510,7 +512,7 @@ def process_and_display(batchFrames, fps):
     # Detection
     results = model(batchFrames, classes=[0])
     print("how many: " + str(len(results)))
-    conf_thres = 0
+    conf_thres = 0.7
     
     pose_results, pose_datasample = [], []
     framesDet, human_detections, targetFrameList, inTracker = [], [], [], []

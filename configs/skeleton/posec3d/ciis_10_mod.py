@@ -12,8 +12,8 @@ default_hooks = dict(
 
 # load_from='../../../work_dirs/ciis_10_0lr2_1/epoch_24.pth'
 # load_from='../../../work_dirs/ciis_21-2/epoch_1120.pth'
-load_from = "https://download.openmmlab.com/mmaction/v1.0/skeleton/posec3d/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint_20220815-38db104b.pth"
-
+# load_from = "https://download.openmmlab.com/mmaction/v1.0/skeleton/posec3d/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint_20220815-38db104b.pth"
+# load_from="../work_dirs/ciis_10_best-550/best_acc_top1_epoch_550.pth"
 
       # model (:obj:`torch.nn.Module` or dict): The model to be run. It can be
         #     a dict used for build a model.
@@ -33,7 +33,7 @@ model = dict(
 	# 	Defaults to ``(0, 0, 1, 1)``.
 	#     with_pool2 (bool): Whether to use pool2. Defaults to False.
         depth=50,
-        pretrained=None,  # can be changed for ciis
+        pretrained="https://download.openmmlab.com/mmaction/v1.0/skeleton/posec3d/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint_20220815-38db104b.pth",  # can be changed for ciis
         in_channels=17,
         base_channels=32,
         num_stages=3,
@@ -77,7 +77,7 @@ model = dict(
 # work_dir = ""
 
 dataset_type = 'PoseDataset'
-ann_file = '../dataset/2025/train_dataset/ciis_0s5_v2.pkl'  # changed for ciis
+ann_file = '../dataset/2025/train_dataset/ciis21_0s5_v2.pkl'  # changed for ciis
 left_kp = [1, 3, 5, 7, 9, 11, 13, 15]
 right_kp = [2, 4, 6, 8, 10, 12, 14, 16]
 train_pipeline = [
@@ -199,7 +199,7 @@ val_evaluator = [dict(type='AccMetric')]
 test_evaluator = val_evaluator
 
 train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=1400, val_begin=10, val_interval=10)
+    type='EpochBasedTrainLoop', max_epochs=3000, val_begin=10, val_interval=10)
 
 
         # val_cfg (dict, optional): A dict to build a validation loop. If it does
@@ -245,7 +245,7 @@ param_scheduler = [
 	# Note that this only implements the cosine annealing part of SGDR, and not
 	# the restarts.
         eta_min=0.02,
-        T_max=1400,  # https://www.youtube.com/watch?v=WgwBRqhdIrQ&t=468s
+        T_max=3000,  # https://www.youtube.com/watch?v=WgwBRqhdIrQ&t=468s
         by_epoch=True,
         convert_to_iter_based=True)
 ]
